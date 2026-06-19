@@ -47,14 +47,28 @@ export default function App() {
   };
 
   return (
-    <main className="page">
+    <>
+      <header className="site-header">
+        <div className="brand">
+          <span className="brand-mark">R</span>
+          ry<span>swap</span>
+        </div>
+        <span className="header-tag">
+          <span className="dot" /> Live · Ethereum Mainnet
+        </span>
+      </header>
+
+      <main className="page">
       <section className="hero">
-        <p className="eyebrow">Robinhood 4663 · Fee-first DeFi</p>
-        <h1>Swap now. Bridge to rbETH next.</h1>
+        <p className="eyebrow">Non-custodial · Fee-first DeFi</p>
+        <h1>
+          Swap ETH with a <span className="accent">transparent 0.3% fee.</span>
+        </h1>
         <p className="lede">
-          Non-custodial, fee-only. The <strong>Swap</strong> tab is live on
-          Ethereum mainnet today. The <strong>Bridge</strong> tab is the staged
-          path to rbETH on Robinhood Chain <strong>{targetChain.id}</strong>.
+          You keep your funds until you sign. Live quotes, slippage protection,
+          and output sent straight to your wallet — no custody, no operator
+          float. Bridge to rbETH on Robinhood Chain <strong>{targetChain.id}</strong>{" "}
+          is staged next.
         </p>
       </section>
 
@@ -257,6 +271,21 @@ export default function App() {
           </article>
         </section>
       )}
-    </main>
+      </main>
+
+      <footer className="site-footer">
+        <span>ryswap · non-custodial fee swap</span>
+        <span>
+          Contract:{" "}
+          <a
+            href={`https://etherscan.io/address/${swapConfig.feeRouter}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {shortAddress(swapConfig.feeRouter)}
+          </a>
+        </span>
+      </footer>
+    </>
   );
 }
