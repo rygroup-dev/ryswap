@@ -20,11 +20,19 @@ const SLIPPAGE_OPTIONS = [
 export function SwapPanel({
   account,
   chainId,
+  walletBalance,
+  walletSymbol,
+  walletChainName,
+  balanceLoading,
   onConnect,
   isConnecting,
 }: {
   account: string | null;
   chainId: number | null;
+  walletBalance: string | null;
+  walletSymbol: string | null;
+  walletChainName: string | null;
+  balanceLoading: boolean;
   onConnect: () => void;
   isConnecting: boolean;
 }) {
@@ -58,6 +66,14 @@ export function SwapPanel({
   const swap = useSwapExecution(account, amount, token, amountOutMinimum);
   const onMainnet = chainId === swapConfig.chainId;
 
+  const useMax = () => {
+    if (!walletBalance || !onMainnet) return;
+    const numeric = Number(walletBalance);
+    if (!Number.isFinite(numeric) || numeric <= 0) return;
+    const next = Math.max(numeric - 0.003, 0);
+    setAmount(next > 0 ? next.toFixed(4) : "0");
+  };
+
   const disabled =
     !account ||
     !onMainnet ||
@@ -75,15 +91,48 @@ export function SwapPanel({
         <span className="pill live-pill">LIVE</span>
       </div>
 
+      <div className="wallet-strip">
+        <div>
+          <span className="wallet-strip-label">Wallet</span>
+          <strong>{account ? shortAddress(account) : "Not connected"}</strong>
+        </div>
+        <div>
+          <span className="wallet-strip-label">Active chain</span>
+          <strong>{walletChainName || "Connect wallet"}</strong>
+        </div>
+        <div>
+          <span className="wallet-strip-label">Native balance</span>
+          <strong>
+            {!account
+              ? "—"
+              : balanceLoading
+                ? "Reading..."
+                : walletBalance && walletSymbol
+                  ? `${walletBalance} ${walletSymbol}`
+                  : "—"}
+          </strong>
+        </div>
+      </div>
+
       <label className="input-wrap">
         <span>Amount in ETH</span>
-        <input
-          type="number"
-          min="0"
-          step="0.001"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
+        <div className="amount-input-row">
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <button
+            className="amount-chip"
+            type="button"
+            disabled={!onMainnet || !walletBalance}
+            onClick={useMax}
+          >
+            Max
+          </button>
+        </div>
       </label>
 
       <label className="input-wrap">
@@ -137,6 +186,21 @@ export function SwapPanel({
               ? `${fmtToken(amountOutMinimum, token.decimals)} ${token.symbol}`
               : "—"}
           </strong>
+        </div>
+      </div>
+
+      <div className="mini-grid">
+        <div className="mini-stat">
+          <span>Route</span>
+          <strong>ETH to {token.symbol}</strong>
+        </div>
+        <div className="mini-stat">
+          <span>Wallet status</span>
+          <strong>{onMainnet ? "Mainnet ready" : "Switch required"}</strong>
+        </div>
+        <div className="mini-stat">
+          <span>Output token</span>
+          <strong>{token.symbol}</strong>
         </div>
       </div>
 

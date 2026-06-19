@@ -11,7 +11,9 @@ export type BridgeQuote = {
   outFormatted: string;
   outSymbol: string;
   minFormatted: string;
+  minSymbol: string;
   appFeeFormatted: string;
+  appFeeSymbol: string;
   timeEstimate: number | null;
   steps: any[];
   raw: any;
@@ -101,12 +103,14 @@ export function useBridgeQuote(
             ? Number(out.amountFormatted).toFixed(6)
             : fmt(out?.amount || "0", out?.currency?.decimals || 18),
           outSymbol: out?.currency?.symbol || to.short,
+          minSymbol: out?.currency?.symbol || to.short,
           minFormatted: out?.minimumAmount
             ? fmt(out.minimumAmount, out?.currency?.decimals || 18)
             : "—",
           appFeeFormatted: app?.amountFormatted
             ? Number(app.amountFormatted).toFixed(6)
             : "0",
+          appFeeSymbol: app?.currency?.symbol || from.short,
           timeEstimate: j.details?.timeEstimate ?? null,
           steps: j.steps || [],
           raw: j,
@@ -151,11 +155,35 @@ export function useBridgeExecute(from: BridgeChain) {
               params: [{ chainId: from.hex }],
             });
           } catch (switchErr: any) {
-            setState({
-              status: "error",
-              message: `Switch wallet to ${from.name} (chainId ${from.id}) and retry.`,
-            });
-            return;
+            if (
+              String(switchErr?.message || "").includes("4902") ||
+              switchErr?.code === 4902
+            ) {
+              await eth.request({
+                method: "wallet_addEthereumChain",
+                params: [{
+                  chainId: from.hex,
+                  chainName: from.name,
+                  nativeCurrency: {
+                    name: from.short,
+                    symbol: from.short,
+                    decimals: 18,
+                  },
+                  rpcUrls: [from.rpc],
+                  blockExplorerUrls: [from.explorer],
+                }],
+              });
+              await eth.request({
+                method: "wallet_switchEthereumChain",
+                params: [{ chainId: from.hex }],
+              });
+            } else {
+              setState({
+                status: "error",
+                message: `Switch wallet to ${from.name} (chainId ${from.id}) and retry.`,
+              });
+              return;
+            }
           }
         }
 

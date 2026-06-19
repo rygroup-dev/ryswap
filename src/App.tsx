@@ -5,13 +5,14 @@ import { useWallet } from "./hooks/useWallet";
 import { SwapPanel } from "./components/SwapPanel";
 import { BridgePanel } from "./components/BridgePanel";
 import { swapConfig } from "./config/swap";
-import { BRIDGE_FEE_BPS } from "./config/bridge";
+import { BRIDGE_FEE_BPS, bridgeChains } from "./config/bridge";
 
 type Tab = "swap" | "bridge";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("swap");
   const wallet = useWallet();
+  const liveBridgeCount = bridgeChains.filter((chain) => !chain.pending).length;
 
   return (
     <>
@@ -34,8 +35,9 @@ export default function App() {
         <p className="lede">
           You keep your funds until you sign. Live quotes, slippage protection,
           and output sent straight to your wallet — no custody, no operator
-          float. Bridge to rbETH on Robinhood Chain <strong>{targetChain.id}</strong>{" "}
-          is staged next.
+          float. Wallet balance is read directly in the UI, and bridge routing
+          now spans <strong>{liveBridgeCount} Relay-enabled chains</strong>. Robinhood
+          Chain <strong>{targetChain.id}</strong> stays staged until Relay lists it.
         </p>
       </section>
 
@@ -56,12 +58,56 @@ export default function App() {
         </button>
       </div>
 
+      <section className="wallet-bar">
+        <div className="wallet-bar-copy">
+          <span className="wallet-strip-label">Connected wallet</span>
+          <strong>{wallet.account ? shortAddress(wallet.account) : "Not connected"}</strong>
+          <p>
+            {wallet.account
+              ? `${wallet.chainName || "Unknown chain"} · ${
+                  wallet.isBalanceLoading
+                    ? "reading balance..."
+                    : wallet.nativeBalanceFormatted && wallet.nativeSymbol
+                      ? `${wallet.nativeBalanceFormatted} ${wallet.nativeSymbol}`
+                      : "balance unavailable"
+                }`
+              : "Connect MetaMask or Rabby to read balance and prepare a live swap or bridge."}
+          </p>
+        </div>
+        <div className="wallet-bar-actions">
+          {wallet.account ? (
+            <button
+              type="button"
+              className="secondary-button wallet-action"
+              onClick={() => void wallet.refreshWalletState()}
+            >
+              Refresh balance
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="secondary-button wallet-action"
+              disabled={wallet.isConnecting}
+              onClick={() => void wallet.connect()}
+            >
+              {wallet.isConnecting ? "Connecting..." : "Connect wallet"}
+            </button>
+          )}
+        </div>
+      </section>
+
+      {wallet.error ? <p className="page-error">{wallet.error}</p> : null}
+
       {tab === "swap" ? (
         <section className="grid">
           <article className="card bridge-card">
             <SwapPanel
               account={wallet.account}
               chainId={wallet.chainId}
+              walletBalance={wallet.nativeBalanceFormatted}
+              walletSymbol={wallet.nativeSymbol}
+              walletChainName={wallet.chainName}
+              balanceLoading={wallet.isBalanceLoading}
               onConnect={() => void wallet.connect()}
               isConnecting={wallet.isConnecting}
             />
@@ -83,6 +129,11 @@ export default function App() {
           <article className="card bridge-card">
             <BridgePanel
               account={wallet.account}
+              chainId={wallet.chainId}
+              walletBalance={wallet.nativeBalanceFormatted}
+              walletSymbol={wallet.nativeSymbol}
+              walletChainName={wallet.chainName}
+              balanceLoading={wallet.isBalanceLoading}
               onConnect={() => void wallet.connect()}
               isConnecting={wallet.isConnecting}
             />
@@ -93,7 +144,7 @@ export default function App() {
               <li>Routing via Relay.link aggregator.</li>
               <li>Non-custodial: relayers move funds, no operator float.</li>
               <li>Transparent {BRIDGE_FEE_BPS / 100}% bridge fee.</li>
-              <li>Live: Ethereum, Arbitrum, Optimism, Base, Scroll, Polygon, Linea, Blast.</li>
+              <li>Live: {liveBridgeCount} Relay-enabled EVM chains in the selector.</li>
               <li>Built-in slippage protection (minimum received).</li>
               <li>Robinhood Chain {targetChain.id}: auto-enables once Relay lists it.</li>
             </ul>

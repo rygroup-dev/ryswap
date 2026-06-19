@@ -10,10 +10,20 @@ import { useBridgeQuote, useBridgeExecute } from "../hooks/useRelayBridge";
 
 export function BridgePanel({
   account,
+  chainId,
+  walletBalance,
+  walletSymbol,
+  walletChainName,
+  balanceLoading,
   onConnect,
   isConnecting,
 }: {
   account: string | null;
+  chainId: number | null;
+  walletBalance: string | null;
+  walletSymbol: string | null;
+  walletChainName: string | null;
+  balanceLoading: boolean;
   onConnect: () => void;
   isConnecting: boolean;
 }) {
@@ -26,10 +36,21 @@ export function BridgePanel({
 
   const { loading, quote, error } = useBridgeQuote(account, amount, from, to);
   const exec = useBridgeExecute(from);
+  const liveChainCount = bridgeChains.filter((chain) => !chain.pending).length;
+  const walletMatchesOrigin = chainId === from.id;
 
   const swapDirection = () => {
     setFromId(toId);
     setToId(fromId);
+  };
+
+  const useMax = () => {
+    if (!walletBalance || !walletMatchesOrigin) return;
+    const numeric = Number(walletBalance);
+    if (!Number.isFinite(numeric) || numeric <= 0) return;
+    const reserve = from.id === 1 ? 0.003 : 0.001;
+    const next = Math.max(numeric - reserve, 0);
+    setAmount(next > 0 ? next.toFixed(4) : "0");
   };
 
   const disabled =
@@ -40,9 +61,32 @@ export function BridgePanel({
       <div className="card-head">
         <div>
           <p className="label">Live · Powered by Relay</p>
-          <h2>Bridge ETH across chains</h2>
+          <h2>Bridge native assets across chains</h2>
         </div>
-        <span className="pill live-pill">LIVE</span>
+        <span className="pill live-pill">{liveChainCount} chains live</span>
+      </div>
+
+      <div className="wallet-strip">
+        <div>
+          <span className="wallet-strip-label">Wallet</span>
+          <strong>{account ? shortAddress(account) : "Not connected"}</strong>
+        </div>
+        <div>
+          <span className="wallet-strip-label">Active chain</span>
+          <strong>{walletChainName || "Connect wallet"}</strong>
+        </div>
+        <div>
+          <span className="wallet-strip-label">Native balance</span>
+          <strong>
+            {!account
+              ? "—"
+              : balanceLoading
+                ? "Reading..."
+                : walletBalance && walletSymbol
+                  ? `${walletBalance} ${walletSymbol}`
+                  : "—"}
+          </strong>
+        </div>
       </div>
 
       <div className="chain-row">
@@ -77,20 +121,45 @@ export function BridgePanel({
       </div>
 
       <label className="input-wrap">
-        <span>Amount in ETH</span>
-        <input
-          type="number"
-          min="0"
-          step="0.001"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
+        <span>Amount in {from.short}</span>
+        <div className="amount-input-row">
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <button
+            className="amount-chip"
+            type="button"
+            disabled={!walletMatchesOrigin || !walletBalance}
+            onClick={useMax}
+          >
+            Max
+          </button>
+        </div>
       </label>
+
+      <div className="mini-grid">
+        <div className="mini-stat">
+          <span>Origin asset</span>
+          <strong>{from.short}</strong>
+        </div>
+        <div className="mini-stat">
+          <span>Destination asset</span>
+          <strong>{to.pending ? "Soon" : to.short}</strong>
+        </div>
+        <div className="mini-stat">
+          <span>Wallet match</span>
+          <strong>{walletMatchesOrigin ? "Ready" : `Switch to ${from.name}`}</strong>
+        </div>
+      </div>
 
       <div className="quote">
         <div>
           <span>Bridge fee ({BRIDGE_FEE_BPS / 100}%)</span>
-          <strong>{quote ? `${quote.appFeeFormatted} ETH` : "—"}</strong>
+          <strong>{quote ? `${quote.appFeeFormatted} ${quote.appFeeSymbol}` : "—"}</strong>
         </div>
         <div>
           <span>You receive on {to.name}</span>
@@ -100,7 +169,7 @@ export function BridgePanel({
         </div>
         <div>
           <span>Minimum received</span>
-          <strong>{quote ? `${quote.minFormatted} ETH` : "—"}</strong>
+          <strong>{quote ? `${quote.minFormatted} ${quote.minSymbol}` : "—"}</strong>
         </div>
         <div>
           <span>Est. time</span>
@@ -150,6 +219,7 @@ export function BridgePanel({
       <ul className="facts compact">
         <li>Fee recipient: {shortAddress(BRIDGE_FEE_RECIPIENT)}</li>
         <li>Routing: Relay.link aggregator · non-custodial</li>
+        <li>Wallet auto-switches and can auto-add supported origin chains.</li>
         <li>Robinhood Chain 4663: auto-enables when Relay lists it</li>
       </ul>
     </div>

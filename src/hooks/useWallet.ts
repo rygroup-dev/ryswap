@@ -1,19 +1,58 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sourceChain, targetChain } from "../config/chains";
+import { chainById } from "../config/bridge";
 
 function getEthereum() {
   return window.ethereum;
 }
 
+function formatNativeBalance(raw: bigint): string {
+  const whole = raw / 10n ** 18n;
+  const fraction = raw % 10n ** 18n;
+  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
+  return fractionText ? `${whole.toString()}.${fractionText}` : whole.toString();
+}
+
 export function useWallet() {
   const [account, setAccount] = useState<string | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
+  const [nativeBalance, setNativeBalance] = useState<bigint | null>(null);
+  const [isBalanceLoading, setIsBalanceLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasWallet = Boolean(getEthereum());
   const onSourceChain = chainId === sourceChain.id;
   const onTargetChain = chainId === targetChain.id;
+  const activeChain = chainId != null ? chainById(chainId) : undefined;
+  const chainName = activeChain?.name || (chainId === targetChain.id ? targetChain.name : null);
+  const nativeSymbol = activeChain?.short || (chainId === sourceChain.id ? sourceChain.symbol : targetChain.nativeSymbol);
+
+  const refreshBalance = useCallback(
+    async (nextAccount?: string | null) => {
+      const ethereum = getEthereum();
+      const address = nextAccount ?? account;
+      if (!ethereum || !address) {
+        setNativeBalance(null);
+        setIsBalanceLoading(false);
+        return;
+      }
+
+      setIsBalanceLoading(true);
+      try {
+        const hexBalance = await ethereum.request<string>({
+          method: "eth_getBalance",
+          params: [address, "latest"],
+        });
+        setNativeBalance(hexBalance ? BigInt(hexBalance) : 0n);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to read wallet balance.");
+      } finally {
+        setIsBalanceLoading(false);
+      }
+    },
+    [account]
+  );
 
   const refreshWalletState = useCallback(async () => {
     const ethereum = getEthereum();
@@ -24,12 +63,14 @@ export function useWallet() {
         ethereum.request<string[]>({ method: "eth_accounts" }),
         ethereum.request<string>({ method: "eth_chainId" })
       ]);
-      setAccount(accounts[0] || null);
+      const nextAccount = accounts[0] || null;
+      setAccount(nextAccount);
       setChainId(hexChainId ? parseInt(hexChainId, 16) : null);
+      await refreshBalance(nextAccount);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to read wallet state.");
     }
-  }, []);
+  }, [refreshBalance]);
 
   useEffect(() => {
     void refreshWalletState();
@@ -39,12 +80,15 @@ export function useWallet() {
 
     const handleAccountsChanged = (accountsRaw: unknown) => {
       const accounts = Array.isArray(accountsRaw) ? (accountsRaw as string[]) : [];
-      setAccount(accounts[0] || null);
+      const nextAccount = accounts[0] || null;
+      setAccount(nextAccount);
+      void refreshBalance(nextAccount);
     };
 
     const handleChainChanged = (hexChainIdRaw: unknown) => {
       if (typeof hexChainIdRaw !== "string") return;
       setChainId(parseInt(hexChainIdRaw, 16));
+      void refreshBalance();
     };
 
     ethereum.on("accountsChanged", handleAccountsChanged);
@@ -54,7 +98,7 @@ export function useWallet() {
       ethereum.removeListener?.("accountsChanged", handleAccountsChanged);
       ethereum.removeListener?.("chainChanged", handleChainChanged);
     };
-  }, [refreshWalletState]);
+  }, [refreshBalance, refreshWalletState]);
 
   const connect = useCallback(async () => {
     const ethereum = getEthereum();
@@ -69,16 +113,18 @@ export function useWallet() {
       const accounts = await ethereum.request<string[]>({
         method: "eth_requestAccounts"
       });
-      setAccount(accounts[0] || null);
+      const nextAccount = accounts[0] || null;
+      setAccount(nextAccount);
 
       const hexChainId = await ethereum.request<string>({ method: "eth_chainId" });
       setChainId(hexChainId ? parseInt(hexChainId, 16) : null);
+      await refreshBalance(nextAccount);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Wallet connection failed.");
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [refreshBalance]);
 
   const switchChain = useCallback(async (chain: {
     id: number;
@@ -108,6 +154,7 @@ export function useWallet() {
         params: [{ chainId: chain.hexChainId }]
       });
       setChainId(chain.id);
+      await refreshBalance();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("4902") && chain.chainParams) {
@@ -116,11 +163,12 @@ export function useWallet() {
           params: [chain.chainParams]
         });
         setChainId(chain.id);
+        await refreshBalance();
         return;
       }
       setError(message || "Failed to switch chain.");
     }
-  }, []);
+  }, [refreshBalance]);
 
   const switchToSource = useCallback(async () => {
     await switchChain(sourceChain);
@@ -134,6 +182,11 @@ export function useWallet() {
     () => ({
       account,
       chainId,
+      nativeBalance,
+      nativeBalanceFormatted: nativeBalance != null ? formatNativeBalance(nativeBalance) : null,
+      nativeSymbol,
+      chainName,
+      isBalanceLoading,
       hasWallet,
       isConnecting,
       error,
@@ -143,11 +196,16 @@ export function useWallet() {
       switchChain,
       switchToSource,
       switchToTarget,
-      refreshWalletState
+      refreshWalletState,
+      refreshBalance,
     }),
     [
       account,
       chainId,
+      nativeBalance,
+      nativeSymbol,
+      chainName,
+      isBalanceLoading,
       hasWallet,
       isConnecting,
       error,
@@ -157,7 +215,8 @@ export function useWallet() {
       switchChain,
       switchToSource,
       switchToTarget,
-      refreshWalletState
+      refreshWalletState,
+      refreshBalance,
     ]
   );
 }
