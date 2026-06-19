@@ -1,12 +1,106 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   bridgeChains,
   BRIDGE_FEE_BPS,
   BRIDGE_FEE_RECIPIENT,
   chainById,
+  type BridgeChain,
 } from "../config/bridge";
 import { shortAddress } from "../lib/format";
-import { useBridgeQuote, useBridgeExecute } from "../hooks/useRelayBridge";
+import { useBridgeExecute, useBridgeQuote } from "../hooks/useRelayBridge";
+
+type BridgeActivity = {
+  id: string;
+  amount: string;
+  fromName: string;
+  toName: string;
+  status: "submitted" | "failed";
+  createdAt: string;
+  feeLabel: string;
+  receiveLabel: string;
+  hash?: string;
+  error?: string;
+};
+
+type ActivityDraft = {
+  amount: string;
+  fromName: string;
+  toName: string;
+  feeLabel: string;
+  receiveLabel: string;
+};
+
+const ACTIVITY_STORAGE_KEY = "ryswap-bridge-activity";
+const POPULAR_CHAIN_IDS = new Set([1, 10, 56, 324, 8453, 42161, 59144, 81457, 167000, 534352]);
+
+function getChainBucket(chain: BridgeChain) {
+  if (chain.pending) return "Soon";
+  if (POPULAR_CHAIN_IDS.has(chain.id)) return "Popular";
+  if (chain.short !== "ETH") return "Alt gas chains";
+  return "More EVM routes";
+}
+
+function getChainGroups(
+  query: string,
+  includePending: boolean,
+  selectedId: number
+): { label: string; chains: BridgeChain[] }[] {
+  const normalized = query.trim().toLowerCase();
+  const pool = bridgeChains.filter((chain) => includePending || !chain.pending);
+  const selected = chainById(selectedId);
+
+  const filtered = normalized
+    ? pool.filter((chain) => {
+        const haystack = `${chain.name} ${chain.short} ${chain.id}`.toLowerCase();
+        return haystack.includes(normalized);
+      })
+    : pool;
+
+  const visible =
+    selected && !filtered.some((chain) => chain.id === selected.id) ? [selected, ...filtered] : filtered;
+
+  const buckets = new Map<string, BridgeChain[]>();
+  for (const chain of visible) {
+    const label = getChainBucket(chain);
+    const list = buckets.get(label) ?? [];
+    list.push(chain);
+    buckets.set(label, list);
+  }
+
+  return ["Popular", "Alt gas chains", "More EVM routes", "Soon"]
+    .map((label) => ({ label, chains: buckets.get(label) ?? [] }))
+    .filter((group) => group.chains.length > 0);
+}
+
+function loadActivity(): BridgeActivity[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ACTIVITY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveActivity(entry: BridgeActivity) {
+  if (typeof window === "undefined") return [];
+  const next = [entry, ...loadActivity()].slice(0, 6);
+  window.localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
+
+function formatActivityTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function BridgePanel({
   account,
@@ -30,18 +124,70 @@ export function BridgePanel({
   const [amount, setAmount] = useState("0.01");
   const [fromId, setFromId] = useState(1);
   const [toId, setToId] = useState(8453);
+  const [fromQuery, setFromQuery] = useState("");
+  const [toQuery, setToQuery] = useState("");
+  const [activity, setActivity] = useState<BridgeActivity[]>([]);
 
   const from = useMemo(() => chainById(fromId) ?? bridgeChains[0], [fromId]);
   const to = useMemo(() => chainById(toId) ?? bridgeChains[1], [toId]);
+  const fromGroups = useMemo(() => getChainGroups(fromQuery, false, from.id), [fromQuery, from.id]);
+  const toGroups = useMemo(() => getChainGroups(toQuery, true, to.id), [toQuery, to.id]);
+  const fromCount = fromGroups.reduce((sum, group) => sum + group.chains.length, 0);
+  const toCount = toGroups.reduce((sum, group) => sum + group.chains.length, 0);
 
   const { loading, quote, error } = useBridgeQuote(account, amount, from, to);
   const exec = useBridgeExecute(from);
   const liveChainCount = bridgeChains.filter((chain) => !chain.pending).length;
   const walletMatchesOrigin = chainId === from.id;
+  const attemptRef = useRef<ActivityDraft | null>(null);
+  const lastSavedRef = useRef("");
+
+  useEffect(() => {
+    setActivity(loadActivity());
+  }, []);
+
+  useEffect(() => {
+    const attempt = attemptRef.current;
+    if (!attempt) return;
+
+    if (exec.state.status === "success" && exec.state.hash !== lastSavedRef.current) {
+      const entry: BridgeActivity = {
+        id: `${Date.now()}-${exec.state.hash}`,
+        amount: attempt.amount,
+        fromName: attempt.fromName,
+        toName: attempt.toName,
+        status: "submitted",
+        createdAt: new Date().toISOString(),
+        feeLabel: attempt.feeLabel,
+        receiveLabel: attempt.receiveLabel,
+        hash: exec.state.hash,
+      };
+      setActivity(saveActivity(entry));
+      lastSavedRef.current = exec.state.hash;
+    }
+
+    if (exec.state.status === "error" && exec.state.message !== lastSavedRef.current) {
+      const entry: BridgeActivity = {
+        id: `${Date.now()}-failed`,
+        amount: attempt.amount,
+        fromName: attempt.fromName,
+        toName: attempt.toName,
+        status: "failed",
+        createdAt: new Date().toISOString(),
+        feeLabel: attempt.feeLabel,
+        receiveLabel: attempt.receiveLabel,
+        error: exec.state.message,
+      };
+      setActivity(saveActivity(entry));
+      lastSavedRef.current = exec.state.message;
+    }
+  }, [exec.state]);
 
   const swapDirection = () => {
     setFromId(toId);
     setToId(fromId);
+    setFromQuery("");
+    setToQuery("");
   };
 
   const useMax = () => {
@@ -52,6 +198,67 @@ export function BridgePanel({
     const next = Math.max(numeric - reserve, 0);
     setAmount(next > 0 ? next.toFixed(4) : "0");
   };
+
+  const handleBridge = () => {
+    if (!quote || !account) return;
+    attemptRef.current = {
+      amount: `${amount} ${from.short}`,
+      fromName: from.name,
+      toName: to.name,
+      feeLabel: `${quote.appFeeFormatted} ${quote.appFeeSymbol}`,
+      receiveLabel: `${quote.outFormatted} ${quote.outSymbol}`,
+    };
+    lastSavedRef.current = "";
+    void exec.execute(account, quote);
+  };
+
+  const clearActivity = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(ACTIVITY_STORAGE_KEY);
+    }
+    setActivity([]);
+  };
+
+  const statusTone =
+    exec.state.status === "success"
+      ? "health-healthy"
+      : exec.state.status === "error" || Boolean(error)
+        ? "health-degraded"
+        : exec.state.status === "pending" || loading
+          ? "health-checking"
+          : "health-box";
+
+  const statusTitle = to.pending
+    ? `${to.name} waiting on Relay listing`
+    : exec.state.status === "success"
+      ? "Bridge submitted to Relay"
+      : exec.state.status === "error"
+        ? "Bridge submission failed"
+        : exec.state.status === "pending"
+          ? "Waiting for wallet confirmation"
+          : loading
+            ? "Fetching best route quote"
+            : error
+              ? "Route needs attention"
+              : quote
+                ? "Route ready to send"
+                : "Set amount to prepare route";
+
+  const statusText = to.pending
+    ? `Chain ${to.id} will auto-enable here as soon as Relay lists Robinhood Chain.`
+    : exec.state.status === "success"
+      ? `Latest route: ${from.name} to ${to.name}. You can track settlement on Relay.`
+      : exec.state.status === "error"
+        ? exec.state.message
+        : exec.state.status === "pending"
+          ? `Confirm the ${from.short} transaction in your wallet on ${from.name}.`
+          : loading
+            ? `Querying Relay for ${from.name} -> ${to.name}.`
+            : error
+              ? error
+              : quote
+                ? `Route is priced and ready. Estimated delivery: ${quote.timeEstimate != null ? `~${quote.timeEstimate}s` : "pending Relay estimate"}.`
+                : "Choose a live route and amount to fetch a quote.";
 
   const disabled =
     !account || !quote || loading || to.pending || exec.state.status === "pending";
@@ -90,34 +297,64 @@ export function BridgePanel({
       </div>
 
       <div className="chain-row">
-        <label className="input-wrap chain-col">
-          <span>From</span>
-          <select value={fromId} onChange={(e) => setFromId(Number(e.target.value))}>
-            {bridgeChains
-              .filter((c) => !c.pending)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+        <div className="chain-picker">
+          <div className="chain-picker-head">
+            <span>From</span>
+            <small>{fromCount} routes</small>
+          </div>
+          <input
+            className="chain-search"
+            type="text"
+            value={fromQuery}
+            onChange={(event) => setFromQuery(event.target.value)}
+            placeholder="Search chain, gas token, or id"
+          />
+          <select value={fromId} onChange={(event) => setFromId(Number(event.target.value))}>
+            {fromGroups.map((group) => (
+              <optgroup key={group.label} label={`${group.label} (${group.chains.length})`}>
+                {group.chains.map((chain) => (
+                  <option key={chain.id} value={chain.id}>
+                    {chain.name} · {chain.short}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
-        </label>
+          <p className="chain-hint">Origin wallet should match this chain before submit.</p>
+        </div>
 
         <button className="swap-dir" type="button" onClick={swapDirection} title="Swap direction">
           ⇄
         </button>
 
-        <label className="input-wrap chain-col">
-          <span>To</span>
-          <select value={toId} onChange={(e) => setToId(Number(e.target.value))}>
-            {bridgeChains.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.pending ? " (soon)" : ""}
-              </option>
+        <div className="chain-picker">
+          <div className="chain-picker-head">
+            <span>To</span>
+            <small>{toCount} routes</small>
+          </div>
+          <input
+            className="chain-search"
+            type="text"
+            value={toQuery}
+            onChange={(event) => setToQuery(event.target.value)}
+            placeholder="Search chain, gas token, or id"
+          />
+          <select value={toId} onChange={(event) => setToId(Number(event.target.value))}>
+            {toGroups.map((group) => (
+              <optgroup key={group.label} label={`${group.label} (${group.chains.length})`}>
+                {group.chains.map((chain) => (
+                  <option key={chain.id} value={chain.id}>
+                    {chain.name}
+                    {chain.pending ? " · soon" : ` · ${chain.short}`}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
-        </label>
+          <p className="chain-hint">
+            Search helps on long lists, and Robinhood Chain stays pinned as soon.
+          </p>
+        </div>
       </div>
 
       <label className="input-wrap">
@@ -128,7 +365,7 @@ export function BridgePanel({
             min="0"
             step="0.001"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(event) => setAmount(event.target.value)}
           />
           <button
             className="amount-chip"
@@ -154,6 +391,16 @@ export function BridgePanel({
           <span>Wallet match</span>
           <strong>{walletMatchesOrigin ? "Ready" : `Switch to ${from.name}`}</strong>
         </div>
+      </div>
+
+      <div className={`health-box ${statusTone}`}>
+        <strong>{statusTitle}</strong>
+        <span>{statusText}</span>
+        {exec.state.status === "success" ? (
+          <a href={`https://relay.link/transaction/${exec.state.hash}`} target="_blank" rel="noreferrer">
+            Track latest bridge on Relay
+          </a>
+        ) : null}
       </div>
 
       <div className="quote">
@@ -184,12 +431,7 @@ export function BridgePanel({
           {isConnecting ? "Connecting..." : "Connect wallet"}
         </button>
       ) : (
-        <button
-          className="primary-button"
-          type="button"
-          disabled={disabled}
-          onClick={() => quote && account && void exec.execute(account, quote)}
-        >
+        <button className="primary-button" type="button" disabled={disabled} onClick={handleBridge}>
           {exec.state.status === "pending"
             ? "Bridging..."
             : to.pending
@@ -200,27 +442,66 @@ export function BridgePanel({
         </button>
       )}
 
-      {exec.state.status === "success" ? (
-        <div className="health-box health-healthy">
-          <strong>Bridge submitted ✅</strong>
-          <a
-            href={`https://relay.link/transaction/${exec.state.hash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Track on Relay
-          </a>
+      <div className="activity-panel">
+        <div className="activity-head">
+          <div>
+            <p className="label">Bridge status</p>
+            <h3>Recent bridge activity</h3>
+          </div>
+          {activity.length > 0 ? (
+            <button className="activity-clear" type="button" onClick={clearActivity}>
+              Clear
+            </button>
+          ) : null}
         </div>
-      ) : null}
-      {exec.state.status === "error" ? (
-        <p className="error-text">{exec.state.message}</p>
-      ) : null}
+
+        {activity.length === 0 ? (
+          <div className="activity-empty">
+            <strong>No bridge history yet</strong>
+            <span>Submitted routes from this browser will appear here with fee and receive summary.</span>
+          </div>
+        ) : (
+          <div className="activity-list">
+            {activity.map((item) => (
+              <article className="activity-item" key={item.id}>
+                <div className="activity-top">
+                  <div>
+                    <strong>
+                      {item.fromName} to {item.toName}
+                    </strong>
+                    <span>{item.amount}</span>
+                  </div>
+                  <span className={`pill ${item.status === "submitted" ? "activity-submitted" : "activity-failed"}`}>
+                    {item.status === "submitted" ? "Submitted" : "Failed"}
+                  </span>
+                </div>
+                <div className="activity-meta">
+                  <span>{formatActivityTime(item.createdAt)}</span>
+                  <span>Fee {item.feeLabel}</span>
+                  <span>Receive {item.receiveLabel}</span>
+                </div>
+                {item.hash ? (
+                  <a
+                    href={`https://relay.link/transaction/${item.hash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Track {shortAddress(item.hash)}
+                  </a>
+                ) : null}
+                {item.error ? <p>{item.error}</p> : null}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
 
       <ul className="facts compact">
         <li>Fee recipient: {shortAddress(BRIDGE_FEE_RECIPIENT)}</li>
         <li>Routing: Relay.link aggregator · non-custodial</li>
         <li>Wallet auto-switches and can auto-add supported origin chains.</li>
-        <li>Robinhood Chain 4663: auto-enables when Relay lists it</li>
+        <li>Robinhood Chain 4663: auto-enables when Relay lists it.</li>
+        <li>History is stored locally in the browser for quick route recall.</li>
       </ul>
     </div>
   );
