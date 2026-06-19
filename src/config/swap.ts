@@ -46,6 +46,30 @@ export const swapTokens: SwapToken[] = [
     decimals: 18,
     poolFee: 500,
   },
+  {
+    symbol: "WBTC",
+    address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+    decimals: 8,
+    poolFee: 3000,
+  },
+  {
+    symbol: "LINK",
+    address: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+    decimals: 18,
+    poolFee: 3000,
+  },
+  {
+    symbol: "UNI",
+    address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+    decimals: 18,
+    poolFee: 3000,
+  },
+  {
+    symbol: "PEPE",
+    address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+    decimals: 18,
+    poolFee: 3000,
+  },
 ];
 
 export const explorerTxBase = "https://etherscan.io/tx/";
