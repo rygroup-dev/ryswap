@@ -4,5 +4,5 @@ export const feeConfig = {
   bps: Number.isFinite(defaultFeeBps) ? defaultFeeBps : 50,
   recipient:
     import.meta.env.VITE_FEE_RECIPIENT ||
-    "0x0000000000000000000000000000000000000000"
+    "0x327F53A3D8fCb1d35fF549234a982D057aa1976C"
 };

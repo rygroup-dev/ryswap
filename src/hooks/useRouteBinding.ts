@@ -6,9 +6,10 @@ export function useRouteBinding() {
     () => ({
       candidates: routeCandidates,
       hasBindableRoute: hasBindableRoute(),
-      liveExecutionReady: false,
-      blocker:
-        "No public reproducible ETH -> rbETH route is confirmed yet. Current evidence shows Relay is disabled and rbETH minting appears custom."
+      liveExecutionReady: hasBindableRoute(),
+      blocker: hasBindableRoute()
+        ? null
+        : "No public reproducible ETH -> Robinhood route is confirmed yet.",
     }),
     []
   );

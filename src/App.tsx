@@ -30,14 +30,13 @@ export default function App() {
       <section className="hero">
         <p className="eyebrow">Non-custodial · Fee-first DeFi</p>
         <h1>
-          Swap ETH with a <span className="accent">transparent 0.3% fee.</span>
+          Swap &amp; bridge with a <span className="accent">transparent fee.</span>
         </h1>
         <p className="lede">
           You keep your funds until you sign. Live quotes, slippage protection,
           and output sent straight to your wallet — no custody, no operator
-          float. Wallet balance is read directly in the UI, and bridge routing
-          now spans <strong>{liveBridgeCount} Relay-enabled chains</strong>. Robinhood
-          Chain <strong>{targetChain.id}</strong> stays staged until Relay lists it.
+          float. Bridge ETH to <strong>Robinhood Chain</strong> via the canonical
+          Arbitrum Inbox, or route across <strong>{liveBridgeCount} chains</strong> via Relay.
         </p>
       </section>
 
@@ -139,14 +138,14 @@ export default function App() {
             />
           </article>
           <article className="card">
-            <h3>Multichain bridge</h3>
+            <h3>Bridge to Robinhood Chain</h3>
             <ul className="facts">
-              <li>Routing via Relay.link aggregator.</li>
-              <li>Non-custodial: relayers move funds, no operator float.</li>
-              <li>Transparent {BRIDGE_FEE_BPS / 100}% bridge fee.</li>
-              <li>Live: {liveBridgeCount} Relay-enabled EVM chains in the selector.</li>
-              <li>Built-in slippage protection (minimum received).</li>
-              <li>Robinhood Chain {targetChain.id}: auto-enables once Relay lists it.</li>
+              <li>Direct bridge: canonical Arbitrum Inbox deposit on L1.</li>
+              <li>Trustless: ETH lands as native ETH on Robinhood Chain.</li>
+              <li>No relayer dependency — uses Arbitrum's built-in bridge.</li>
+              <li>Multichain: {liveBridgeCount} Relay-enabled chains also available.</li>
+              <li>Non-custodial: no operator float, no custody.</li>
+              <li>Your Robinhood Chain balance shown live in the panel.</li>
             </ul>
           </article>
         </section>
