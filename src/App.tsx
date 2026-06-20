@@ -3,11 +3,12 @@ import { shortAddress } from "./lib/format";
 import { useWallet } from "./hooks/useWallet";
 import { SwapPanel } from "./components/SwapPanel";
 import { BridgePanel } from "./components/BridgePanel";
+import { LaunchTab } from "./components/launch/LaunchTab";
 import { mainnetSwap, robinhoodSwap, isSwapChainLive } from "./config/swap";
 import { bridgeChains } from "./config/bridge";
 import { directBridgeConfig } from "./config/directBridge";
 
-type Tab = "swap" | "rh-swap" | "bridge";
+type Tab = "swap" | "rh-swap" | "launch" | "bridge";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("swap");
@@ -108,6 +109,13 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={`tab ${tab === "launch" ? "tab-active" : ""}`}
+          onClick={() => setTab("launch")}
+        >
+          Launch
+        </button>
+        <button
+          type="button"
           className={`tab ${tab === "bridge" ? "tab-active" : ""}`}
           onClick={() => setTab("bridge")}
         >
@@ -188,6 +196,8 @@ export default function App() {
             </ul>
           </article>
         </section>
+      ) : tab === "launch" ? (
+        <LaunchTab account={wallet.account} />
       ) : (
         <section className="grid">
           <article className="card bridge-card">
