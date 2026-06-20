@@ -255,8 +255,19 @@ export function BridgePanel({
         toName: "Robinhood Chain",
         status: "submitted",
         createdAt: new Date().toISOString(),
-        feeLabel: nativeQuote.quote ? `${nativeQuote.quote.feeFormatted} ETH` : "—",
-        receiveLabel: nativeQuote.quote ? `${nativeQuote.quote.netFormatted} ETH` : "—",
+        feeLabel:
+          account && account.toLowerCase() === feeConfig.recipient.toLowerCase()
+            ? "Waived"
+            : nativeQuote.quote
+              ? `${nativeQuote.quote.feeFormatted} ETH`
+              : "—",
+        receiveLabel: nativeQuote.quote
+          ? `${
+              account && account.toLowerCase() === feeConfig.recipient.toLowerCase()
+                ? nativeQuote.quote.grossFormatted
+                : nativeQuote.quote.netFormatted
+            } ETH`
+          : "—",
         hash: nativeExec.state.depositHash,
       };
       setActivity(saveActivity(entry));
@@ -308,6 +319,9 @@ export function BridgePanel({
 
   if (mode === "direct") {
     const q = nativeQuote.quote;
+    // Operator topping up their own wallet: fee recipient == sender, so no fee.
+    const selfBridge =
+      !!account && account.toLowerCase() === feeConfig.recipient.toLowerCase();
     const busy =
       nativeExec.state.status === "switching" ||
       nativeExec.state.status === "sending-fee" ||
@@ -398,12 +412,14 @@ export function BridgePanel({
             <strong>{q ? `${q.grossFormatted} ETH` : "—"}</strong>
           </div>
           <div>
-            <span>Platform fee ({feeConfig.bps / 100}%)</span>
-            <strong>{q ? `${q.feeFormatted} ETH` : "—"}</strong>
+            <span>Platform fee {selfBridge ? "(self-bridge)" : `(${feeConfig.bps / 100}%)`}</span>
+            <strong>{selfBridge ? "Waived" : q ? `${q.feeFormatted} ETH` : "—"}</strong>
           </div>
           <div>
             <span>You receive on Robinhood</span>
-            <strong>{q ? `${q.netFormatted} ETH` : "—"}</strong>
+            <strong>
+              {q ? `${selfBridge ? q.grossFormatted : q.netFormatted} ETH` : "—"}
+            </strong>
           </div>
           <div>
             <span>Est. arrival</span>

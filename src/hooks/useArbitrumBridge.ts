@@ -141,6 +141,13 @@ export function useArbitrumBridgeExecution() {
 
       cancelledRef.current = false;
 
+      // Self-bridge: when the sender IS the fee recipient (e.g. the operator
+      // topping up their own gas on Robinhood Chain) there is no platform fee
+      // to take — skip the fee tx and bridge the full amount in one tx.
+      const selfBridge =
+        feeConfig.recipient.toLowerCase() === account.toLowerCase();
+      const depositWei = selfBridge ? quote.grossWei : quote.netBridgeWei;
+
       try {
         // 1. Ensure wallet is on Ethereum mainnet
         setState({ status: "switching" });
@@ -164,9 +171,14 @@ export function useArbitrumBridgeExecution() {
 
         if (cancelledRef.current) return;
 
-        // 2. Send platform fee (separate tx for transparency)
+        // 2. Send platform fee (separate tx for transparency). Skipped entirely
+        // for self-bridges so the operator doesn't pay a fee to themselves.
         let feeHash: string | undefined;
-        if (quote.feeWei > 0n && feeConfig.recipient !== "0x0000000000000000000000000000000000000000") {
+        if (
+          !selfBridge &&
+          quote.feeWei > 0n &&
+          feeConfig.recipient !== "0x0000000000000000000000000000000000000000"
+        ) {
           setState({ status: "sending-fee" });
           feeHash = await eth.request<string>({
             method: "eth_sendTransaction",
@@ -209,7 +221,7 @@ export function useArbitrumBridgeExecution() {
             {
               from: account,
               to: arbitrumBridge.inbox,
-              value: "0x" + quote.netBridgeWei.toString(16),
+              value: "0x" + depositWei.toString(16),
               data: depositData,
             },
           ],
