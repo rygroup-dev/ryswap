@@ -3,10 +3,26 @@ import {
   isSwapChainLive,
   mainnetSwap,
   type SwapChainConfig,
+  type SwapToken,
 } from "../config/swap";
 import { shortAddress } from "../lib/format";
 import { useSwapExecution } from "../hooks/useSwapExecution";
 import { useQuote } from "../hooks/useQuote";
+import { detectToken, isAddress } from "../lib/token";
+
+function customTokenKey(chainId: number): string {
+  return `ryhood-custom-tokens-${chainId}`;
+}
+function loadCustomTokens(chainId: number): SwapToken[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(customTokenKey(chainId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 function fmtEth(wei: bigint): string {
   return (Number(wei) / 1e18).toFixed(6);
@@ -42,23 +58,69 @@ export function SwapPanel({
   onConnect: () => void;
   isConnecting: boolean;
 }) {
-  const tokens = config.tokens;
+  const [customTokens, setCustomTokens] = useState<SwapToken[]>([]);
+  const tokens = useMemo(
+    () => [...config.tokens, ...customTokens],
+    [config, customTokens]
+  );
   const hasTokens = tokens.length > 0;
-  const chainLive = isSwapChainLive(config);
+  const chainLive = isSwapChainLive(config) || (Boolean(config.feeRouter) && tokens.length > 0);
 
   const [amount, setAmount] = useState("0.01");
-  const [tokenSymbol, setTokenSymbol] = useState(tokens[0]?.symbol ?? "");
+  const [tokenAddr, setTokenAddr] = useState(tokens[0]?.address ?? "");
   const [slippageBps, setSlippageBps] = useState(100);
 
-  // Keep the selected token valid when the active chain changes.
+  // Paste-token detection state.
+  const [pasteAddr, setPasteAddr] = useState("");
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState<string | null>(null);
+
+  // Load this chain's saved custom tokens + reset selection when chain changes.
   useEffect(() => {
-    setTokenSymbol(tokens[0]?.symbol ?? "");
+    const saved = loadCustomTokens(config.chainId);
+    setCustomTokens(saved);
+    setTokenAddr(config.tokens[0]?.address ?? saved[0]?.address ?? "");
+    setPasteAddr("");
+    setDetectError(null);
   }, [config]);
 
   const token = useMemo(
-    () => tokens.find((t) => t.symbol === tokenSymbol) ?? tokens[0] ?? null,
-    [tokenSymbol, tokens]
+    () =>
+      tokens.find((t) => t.address.toLowerCase() === tokenAddr.toLowerCase()) ??
+      tokens[0] ??
+      null,
+    [tokenAddr, tokens]
   );
+
+  const handleDetect = async () => {
+    setDetectError(null);
+    if (!isAddress(pasteAddr)) {
+      setDetectError("Paste a valid 0x… contract address.");
+      return;
+    }
+    const exists = tokens.find((t) => t.address.toLowerCase() === pasteAddr.trim().toLowerCase());
+    if (exists) {
+      setTokenAddr(exists.address);
+      setPasteAddr("");
+      return;
+    }
+    setDetecting(true);
+    const result = await detectToken(config.rpc, config.factory, config.weth, pasteAddr);
+    setDetecting(false);
+    if (!result.ok) {
+      setDetectError(result.error);
+      return;
+    }
+    const next = [...customTokens, result.token];
+    setCustomTokens(next);
+    setTokenAddr(result.token.address);
+    setPasteAddr("");
+    try {
+      window.localStorage.setItem(customTokenKey(config.chainId), JSON.stringify(next));
+    } catch {
+      /* ignore quota errors */
+    }
+  };
 
   // Compute fee split locally for the quote (mirror of hook math).
   const total = useMemo(() => {
@@ -174,21 +236,50 @@ export function SwapPanel({
       <label className="input-wrap">
         <span>Receive token</span>
         <select
-          value={tokenSymbol}
+          value={tokenAddr}
           disabled={!hasTokens}
-          onChange={(e) => setTokenSymbol(e.target.value)}
+          onChange={(e) => setTokenAddr(e.target.value)}
         >
           {hasTokens ? (
             tokens.map((t) => (
-              <option key={t.symbol} value={t.symbol}>
+              <option key={t.address} value={t.address}>
                 {t.symbol}
+                {config.tokens.some((c) => c.address === t.address) ? "" : " · custom"}
               </option>
             ))
           ) : (
-            <option value="">No tokens available yet</option>
+            <option value="">Paste a token address below</option>
           )}
         </select>
       </label>
+
+      <div className="input-wrap">
+        <span>Add token by contract address</span>
+        <div className="amount-input-row">
+          <input
+            type="text"
+            placeholder="0x… token contract"
+            spellCheck={false}
+            value={pasteAddr}
+            onChange={(e) => setPasteAddr(e.target.value)}
+          />
+          <button
+            className="amount-chip"
+            type="button"
+            disabled={detecting || !pasteAddr}
+            onClick={() => void handleDetect()}
+          >
+            {detecting ? "Detecting…" : "Detect"}
+          </button>
+        </div>
+        {detectError ? <p className="error-text">{detectError}</p> : null}
+        {token && !config.tokens.some((c) => c.address === token.address) ? (
+          <p className="execution-note">
+            {token.symbol} · {token.decimals} dec · {token.poolFee / 10000}% pool ·{" "}
+            {shortAddress(token.address)}
+          </p>
+        ) : null}
+      </div>
 
       <label className="input-wrap">
         <span>Max slippage</span>

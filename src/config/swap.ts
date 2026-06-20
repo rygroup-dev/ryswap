@@ -23,6 +23,8 @@ export type SwapChainConfig = {
   feeRouter: string; // "" until deployed on this chain
   swapRouter: string; // SwapRouter02-style router
   quoter: string; // QuoterV2; "" disables live quotes on this chain
+  factory: string; // Uniswap V3 factory — used to detect pasted tokens' pools
+  rpc: string; // read-only RPC for token/pool detection (no wallet needed)
   weth: string; // WETH9 the router wraps to
   feeBps: number;
   feeRecipient: string;
@@ -52,6 +54,8 @@ export const mainnetSwap: SwapChainConfig = {
     "0xB6bEB664d3888b8E59d816203e894012727Ea83A",
   swapRouter: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45", // Uniswap SwapRouter02
   quoter: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e", // Uniswap QuoterV2
+  factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984", // Uniswap V3 factory
+  rpc: "https://ethereum-rpc.publicnode.com",
   weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   feeBps: Number(import.meta.env.VITE_FEE_BPS || 30),
   feeRecipient:
@@ -86,6 +90,12 @@ export const robinhoodSwap: SwapChainConfig = {
     (import.meta.env.VITE_SWAP_ROUTER as string) ||
     "0xCaf681a66D020601342297493863E78C959E5cb2",
   quoter: (import.meta.env.VITE_SWAP_QUOTER_4663 as string) || "",
+  factory:
+    (import.meta.env.VITE_SWAP_FACTORY_4663 as string) ||
+    "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA", // Uniswap V3 factory on 4663
+  rpc:
+    (import.meta.env.VITE_TARGET_CHAIN_RPC as string) ||
+    "https://poptye-always-win.poptyedev.com",
   weth:
     (import.meta.env.VITE_WETH_ADDRESS as string) ||
     "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
