@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { arbitrumBridge, BRIDGE_ETA_SECONDS } from "../config/arbitrumBridge";
 import { formatWeiToEth, parseEthToWei, applyBps } from "../lib/evm";
 import { feeConfig } from "../config/fees";
+import { getProvider } from "../lib/provider";
 
 // ── ABI encoding helpers (no external deps) ─────────────────────────────────
 
@@ -133,7 +134,7 @@ export function useArbitrumBridgeExecution() {
 
   const execute = useCallback(
     async (account: string, quote: NativeBridgeQuote) => {
-      const eth = window.ethereum;
+      const eth = getProvider();
       if (!eth) {
         setState({ status: "error", message: "No wallet found." });
         return;
@@ -270,6 +271,72 @@ export function useArbitrumBridgeExecution() {
   }, []);
 
   return { state, execute, reset };
+}
+
+// ── Inbox allowlist check ────────────────────────────────────────────────────
+// Robinhood Chain's Inbox is permissioned: depositEth reverts with
+// NotAllowedOrigin unless the sender is on the L1 Inbox allowlist. We read this
+// up front (via the L1 RPC, no wallet needed) so the UI can warn instead of
+// letting the user hit a raw revert.
+
+async function l1Call(to: string, data: string): Promise<string | null> {
+  try {
+    const res = await fetch(arbitrumBridge.l1Rpc, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [{ to, data }, "latest"],
+      }),
+    });
+    const json = await res.json();
+    return typeof json.result === "string" ? json.result : null;
+  } catch {
+    return null;
+  }
+}
+
+export type AllowlistState = {
+  loading: boolean;
+  enabled: boolean; // does the Inbox enforce an allowlist?
+  allowed: boolean; // is the connected account allowed to deposit?
+};
+
+export function useInboxAllowlist(account: string | null): AllowlistState {
+  const [state, setState] = useState<AllowlistState>({
+    loading: false,
+    enabled: false,
+    allowed: true,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!account) {
+      setState({ loading: false, enabled: false, allowed: true });
+      return;
+    }
+    setState((s) => ({ ...s, loading: true }));
+    (async () => {
+      const enabledRet = await l1Call(arbitrumBridge.inbox, "0x22bd5c1c"); // allowListEnabled()
+      const enabled = enabledRet ? BigInt(enabledRet) === 1n : false;
+      let allowed = true;
+      if (enabled) {
+        const allowedRet = await l1Call(
+          arbitrumBridge.inbox,
+          "0xbabcc539" + account.toLowerCase().replace(/^0x/, "").padStart(64, "0") // isAllowed(address)
+        );
+        allowed = allowedRet ? BigInt(allowedRet) === 1n : false;
+      }
+      if (!cancelled) setState({ loading: false, enabled, allowed });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account]);
+
+  return state;
 }
 
 // ── L2 balance checker ──────────────────────────────────────────────────────

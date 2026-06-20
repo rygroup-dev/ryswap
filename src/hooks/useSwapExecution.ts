@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { SwapChainConfig, SwapToken } from "../config/swap";
+import { getProvider } from "../lib/provider";
 
 // Minimal ABI encoding helpers for exactInputSingle + routeSwap, done by hand to
 // avoid pulling a full web3 lib into the bundle. We only need a couple of selectors.
@@ -90,7 +91,7 @@ export function useSwapExecution(
   }, [amountEth, config]);
 
   const execute = useCallback(async () => {
-    const eth = (window as unknown as { ethereum?: any }).ethereum;
+    const eth = getProvider();
     if (!eth) {
       setState({ status: "error", message: "No injected wallet found." });
       return;

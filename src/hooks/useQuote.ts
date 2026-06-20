@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { SwapChainConfig, SwapToken } from "../config/swap";
+import { getProvider } from "../lib/provider";
 
 function pad(hex: string): string {
   return hex.replace(/^0x/, "").padStart(64, "0");
@@ -45,7 +46,7 @@ export function useQuote(
   const reqId = useRef(0);
 
   useEffect(() => {
-    const eth = (window as unknown as { ethereum?: any }).ethereum;
+    const eth = getProvider();
     // No wallet, no quoter on this chain, no token, or no input -> no quote.
     if (!eth || !config.quoter || !token || forwardWei <= 0n) {
       setState({ loading: false, amountOut: null, error: null });

@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { sourceChain, targetChain } from "../config/chains";
 import { chainById } from "../config/bridge";
-
-function getEthereum() {
-  return window.ethereum;
-}
+import {
+  getProvider,
+  getSelectedRdns,
+  listWallets,
+  selectWallet as selectWalletStore,
+  subscribe,
+  type DiscoveredWallet,
+} from "../lib/provider";
 
 function formatNativeBalance(raw: bigint): string {
   const whole = raw / 10n ** 18n;
@@ -21,7 +25,15 @@ export function useWallet() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasWallet = Boolean(getEthereum());
+  // Re-render when the set of discovered wallets / selection changes (EIP-6963).
+  const wallets = useSyncExternalStore<DiscoveredWallet[]>(
+    subscribe,
+    listWallets,
+    () => []
+  );
+  const selectedRdns = useSyncExternalStore(subscribe, getSelectedRdns, () => null);
+
+  const hasWallet = wallets.length > 0;
   const onSourceChain = chainId === sourceChain.id;
   const onTargetChain = chainId === targetChain.id;
   const activeChain = chainId != null ? chainById(chainId) : undefined;
@@ -30,7 +42,7 @@ export function useWallet() {
 
   const refreshBalance = useCallback(
     async (nextAccount?: string | null) => {
-      const ethereum = getEthereum();
+      const ethereum = getProvider();
       const address = nextAccount ?? account;
       if (!ethereum || !address) {
         setNativeBalance(null);
@@ -55,7 +67,7 @@ export function useWallet() {
   );
 
   const refreshWalletState = useCallback(async () => {
-    const ethereum = getEthereum();
+    const ethereum = getProvider();
     if (!ethereum) return;
 
     try {
@@ -72,10 +84,11 @@ export function useWallet() {
     }
   }, [refreshBalance]);
 
+  // Re-sync + (re)attach events whenever the selected provider changes.
   useEffect(() => {
     void refreshWalletState();
 
-    const ethereum = getEthereum();
+    const ethereum = getProvider();
     if (!ethereum?.on) return;
 
     const handleAccountsChanged = (accountsRaw: unknown) => {
@@ -98,12 +111,14 @@ export function useWallet() {
       ethereum.removeListener?.("accountsChanged", handleAccountsChanged);
       ethereum.removeListener?.("chainChanged", handleChainChanged);
     };
-  }, [refreshBalance, refreshWalletState]);
+  }, [refreshBalance, refreshWalletState, selectedRdns]);
 
-  const connect = useCallback(async () => {
-    const ethereum = getEthereum();
+  // Connect to a specific wallet (by EIP-6963 rdns) or the current default.
+  const connect = useCallback(async (rdns?: string) => {
+    if (rdns) selectWalletStore(rdns);
+    const ethereum = getProvider();
     if (!ethereum) {
-      setError("No injected wallet found. Please open with MetaMask or Rabby.");
+      setError("No wallet found. Install MetaMask, OKX, Bitget, Rabby, or Zerion.");
       return;
     }
 
@@ -126,6 +141,10 @@ export function useWallet() {
     }
   }, [refreshBalance]);
 
+  const selectWallet = useCallback((rdns: string) => {
+    selectWalletStore(rdns);
+  }, []);
+
   const switchChain = useCallback(async (chain: {
     id: number;
     hexChainId: string;
@@ -141,9 +160,9 @@ export function useWallet() {
       blockExplorerUrls: string[];
     };
   }) => {
-    const ethereum = getEthereum();
+    const ethereum = getProvider();
     if (!ethereum) {
-      setError("No injected wallet found.");
+      setError("No wallet found.");
       return;
     }
 
@@ -188,6 +207,9 @@ export function useWallet() {
       chainName,
       isBalanceLoading,
       hasWallet,
+      wallets,
+      selectedRdns,
+      selectWallet,
       isConnecting,
       error,
       onSourceChain,
@@ -207,6 +229,9 @@ export function useWallet() {
       chainName,
       isBalanceLoading,
       hasWallet,
+      wallets,
+      selectedRdns,
+      selectWallet,
       isConnecting,
       error,
       onSourceChain,

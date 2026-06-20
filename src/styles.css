@@ -778,3 +778,69 @@ body::before {
   color: var(--brand-2);
   box-shadow: 0 1px 4px rgba(16,185,129,0.08);
 }
+
+/* ── Wallet picker modal (EIP-6963 multi-wallet) ─────────────────────── */
+.wallet-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 6, 11, 0.72);
+  backdrop-filter: blur(6px);
+  animation: rise .2s ease both;
+}
+.wallet-modal {
+  width: min(400px, calc(100% - 32px));
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+.wallet-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.wallet-modal-head strong {
+  font-family: var(--display);
+  font-size: 17px;
+}
+.wallet-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--sub);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.wallet-modal-close:hover { color: var(--text); background: var(--panel-2); }
+.wallet-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 14.5px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.wallet-option:hover {
+  border-color: var(--brand-2);
+  background: rgba(16, 185, 129, 0.08);
+}
+.wallet-option img { border-radius: 7px; }
+.wallet-option-dot {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--brand-2), var(--accent));
+}

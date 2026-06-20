@@ -11,14 +11,62 @@ type Tab = "swap" | "rh-swap" | "bridge";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("swap");
+  const [showWalletPicker, setShowWalletPicker] = useState(false);
   const wallet = useWallet();
   const liveBridgeCount = bridgeChains.filter((chain) => !chain.pending).length;
   const isSwapTab = tab === "swap" || tab === "rh-swap";
   const activeSwapConfig = tab === "rh-swap" ? robinhoodSwap : mainnetSwap;
   const rhLive = isSwapChainLive(robinhoodSwap);
 
+  // One wallet -> connect straight away; several -> let the user pick.
+  const handleConnect = () => {
+    if (wallet.wallets.length <= 1) {
+      void wallet.connect();
+    } else {
+      setShowWalletPicker(true);
+    }
+  };
+  const pickWallet = (rdns: string) => {
+    setShowWalletPicker(false);
+    void wallet.connect(rdns);
+  };
+
   return (
     <>
+      {showWalletPicker ? (
+        <div
+          className="wallet-modal-overlay"
+          onClick={() => setShowWalletPicker(false)}
+        >
+          <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wallet-modal-head">
+              <strong>Connect a wallet</strong>
+              <button
+                type="button"
+                className="wallet-modal-close"
+                onClick={() => setShowWalletPicker(false)}
+              >
+                ✕
+              </button>
+            </div>
+            {wallet.wallets.map((w) => (
+              <button
+                key={w.info.rdns}
+                type="button"
+                className="wallet-option"
+                onClick={() => pickWallet(w.info.rdns)}
+              >
+                {w.info.icon ? (
+                  <img src={w.info.icon} alt="" width={24} height={24} />
+                ) : (
+                  <span className="wallet-option-dot" />
+                )}
+                <span>{w.info.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <header className="site-header">
         <div className="brand">
           <span className="brand-mark">R</span>
@@ -97,7 +145,7 @@ export default function App() {
               type="button"
               className="secondary-button wallet-action"
               disabled={wallet.isConnecting}
-              onClick={() => void wallet.connect()}
+              onClick={handleConnect}
             >
               {wallet.isConnecting ? "Connecting..." : "Connect wallet"}
             </button>
@@ -118,7 +166,7 @@ export default function App() {
               walletSymbol={wallet.nativeSymbol}
               walletChainName={wallet.chainName}
               balanceLoading={wallet.isBalanceLoading}
-              onConnect={() => void wallet.connect()}
+              onConnect={handleConnect}
               isConnecting={wallet.isConnecting}
             />
           </article>
@@ -150,7 +198,7 @@ export default function App() {
               walletSymbol={wallet.nativeSymbol}
               walletChainName={wallet.chainName}
               balanceLoading={wallet.isBalanceLoading}
-              onConnect={() => void wallet.connect()}
+              onConnect={handleConnect}
               isConnecting={wallet.isConnecting}
             />
           </article>

@@ -6,6 +6,7 @@ import {
   NATIVE,
   type BridgeChain,
 } from "../config/bridge";
+import { getProvider } from "../lib/provider";
 
 export type BridgeQuote = {
   outFormatted: string;
@@ -138,7 +139,7 @@ export function useBridgeExecute(from: BridgeChain) {
 
   const execute = useCallback(
     async (account: string, quote: BridgeQuote) => {
-      const eth = (window as unknown as { ethereum?: any }).ethereum;
+      const eth = getProvider();
       if (!eth) {
         setState({ status: "error", message: "No injected wallet found." });
         return;

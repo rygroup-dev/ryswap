@@ -13,6 +13,7 @@ import {
   useNativeBridgeQuote,
   useArbitrumBridgeExecution,
   useL2Balance,
+  useInboxAllowlist,
 } from "../hooks/useArbitrumBridge";
 import { arbitrumBridge } from "../config/arbitrumBridge";
 
@@ -202,6 +203,7 @@ export function BridgePanel({
   const nativeQuote = useNativeBridgeQuote(amount);
   const nativeExec = useArbitrumBridgeExecution();
   const l2Balance = useL2Balance(account);
+  const allowlist = useInboxAllowlist(account);
   const onEthMainnet = chainId === 1;
 
   useEffect(() => {
@@ -327,7 +329,10 @@ export function BridgePanel({
       nativeExec.state.status === "sending-fee" ||
       nativeExec.state.status === "depositing" ||
       nativeExec.state.status === "waiting";
-    const disabled = !account || !q || busy || !onEthMainnet;
+    // Robinhood Chain's Inbox is permissioned — block the action (instead of a
+    // raw on-chain revert) when the connected address isn't allowlisted.
+    const bridgeBlocked = allowlist.enabled && !allowlist.allowed;
+    const disabled = !account || !q || busy || !onEthMainnet || bridgeBlocked;
 
     return (
       <div className="swap-panel">
@@ -340,6 +345,18 @@ export function BridgePanel({
         </div>
 
         <ModeSelector mode={mode} setMode={setMode} liveChainCount={liveChainCount} />
+
+        {bridgeBlocked ? (
+          <div className="health-box health-degraded">
+            <strong>Address not allowlisted on Robinhood Chain</strong>
+            <span>
+              Robinhood Chain's bridge Inbox is permissioned — native deposits are
+              restricted to allowlisted addresses, so this wallet can't bridge ETH
+              in directly. Acquire gas via OTC (e.g. greenw00d.com) or ask the chain
+              operator to allowlist {account ? shortAddress(account) : "your address"}.
+            </span>
+          </div>
+        ) : null}
 
         <div className="wallet-strip">
           <div>
@@ -442,7 +459,11 @@ export function BridgePanel({
             disabled={disabled}
             onClick={() => q && account && void nativeExec.execute(account, q)}
           >
-            {busy ? nativeBridgeStatusLabel(nativeExec.state.status) : "Bridge to Robinhood Chain"}
+            {busy
+              ? nativeBridgeStatusLabel(nativeExec.state.status)
+              : bridgeBlocked
+                ? "Address not allowlisted"
+                : "Bridge to Robinhood Chain"}
           </button>
         )}
 
