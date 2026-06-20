@@ -31,7 +31,15 @@ const listeners = new Set<() => void>();
 let selectedRdns: string | null =
   typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
 
+// Cached snapshot for useSyncExternalStore: getSnapshot MUST return a stable
+// reference between renders or React loops forever (blank screen). We only
+// rebuild the array when `version` bumps (a wallet announces / selection changes).
+let version = 0;
+let cache: DiscoveredWallet[] = [];
+let cacheVersion = -1;
+
 function emit() {
+  version++;
   for (const l of listeners) l();
 }
 
@@ -55,6 +63,7 @@ if (typeof window !== "undefined") {
 // All discovered wallets, plus a legacy fallback entry if a wallet only injects
 // the old window.ethereum and never announced via EIP-6963.
 export function listWallets(): DiscoveredWallet[] {
+  if (cacheVersion === version) return cache;
   const list = [...wallets.values()];
   const legacy = legacyInjected();
   if (legacy && !list.some((w) => w.provider === legacy)) {
@@ -63,7 +72,9 @@ export function listWallets(): DiscoveredWallet[] {
       provider: legacy,
     });
   }
-  return list;
+  cache = list;
+  cacheVersion = version;
+  return cache;
 }
 
 export function subscribe(cb: () => void): () => void {

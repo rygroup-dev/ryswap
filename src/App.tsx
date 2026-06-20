@@ -70,7 +70,7 @@ export default function App() {
       <header className="site-header">
         <div className="brand">
           <span className="brand-mark">R</span>
-          ry<span>swap</span>
+          Ry<span>HooD</span>
         </div>
         <span className="header-tag">
           <span className="dot" /> Live · Ethereum Mainnet
@@ -223,7 +223,7 @@ export default function App() {
       </main>
 
       <footer className="site-footer">
-        <span>ryswap · non-custodial fee swap</span>
+        <span>Ry HooD · non-custodial swap, bridge &amp; trade</span>
         <span>
           Contract:{" "}
           <a
