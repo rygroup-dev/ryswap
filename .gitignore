@@ -8,3 +8,6 @@ contracts/out/deployment*.json
 
 # Internal docs — not for public repo
 internal/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { swapConfig, type SwapToken, explorerTxBase } from "../config/swap";
+import type { SwapChainConfig, SwapToken } from "../config/swap";
 
 // Minimal ABI encoding helpers for exactInputSingle + routeSwap, done by hand to
 // avoid pulling a full web3 lib into the bundle. We only need a couple of selectors.
@@ -68,8 +68,9 @@ type SwapState =
 export function useSwapExecution(
   account: string | null,
   amountEth: string,
-  token: SwapToken,
-  amountOutMinimum: bigint = 0n
+  token: SwapToken | null,
+  amountOutMinimum: bigint = 0n,
+  config: SwapChainConfig
 ) {
   const [state, setState] = useState<SwapState>({ status: "idle" });
 
@@ -83,10 +84,10 @@ export function useSwapExecution(
     } catch {
       total = 0n;
     }
-    const fee = (total * BigInt(swapConfig.feeBps)) / 10000n;
+    const fee = (total * BigInt(config.feeBps)) / 10000n;
     const forward = total - fee;
     return { total, fee, forward };
-  }, [amountEth]);
+  }, [amountEth, config]);
 
   const execute = useCallback(async () => {
     const eth = (window as unknown as { ethereum?: any }).ethereum;
@@ -102,12 +103,23 @@ export function useSwapExecution(
       setState({ status: "error", message: "Enter a valid amount." });
       return;
     }
+    if (!token) {
+      setState({ status: "error", message: "Select an output token." });
+      return;
+    }
+    if (!config.feeRouter) {
+      setState({
+        status: "error",
+        message: `FeeRouter is not deployed on ${config.chainName} yet.`,
+      });
+      return;
+    }
 
     try {
       setState({ status: "pending" });
 
       const routerCalldata = encodeExactInputSingle({
-        tokenIn: swapConfig.weth,
+        tokenIn: config.weth,
         tokenOut: token.address,
         fee: token.poolFee,
         recipient: account, // output goes straight to the user
@@ -118,7 +130,7 @@ export function useSwapExecution(
 
       const txParams = {
         from: account,
-        to: swapConfig.feeRouter,
+        to: config.feeRouter,
         value: "0x" + split.total.toString(16),
         data,
       };
@@ -153,12 +165,12 @@ export function useSwapExecution(
         message: err?.message || "Swap failed.",
       });
     }
-  }, [account, split, token, amountOutMinimum]);
+  }, [account, split, token, amountOutMinimum, config]);
 
   return {
     state,
     split,
-    explorerUrl: (h: string) => explorerTxBase + h,
+    explorerUrl: (h: string) => config.explorerTxBase + h,
     execute,
     reset: () => setState({ status: "idle" }),
   };

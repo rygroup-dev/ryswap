@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Compile contracts/src/FeeRouter.sol with solc and write artifact to contracts/out/.
+// Compile every Solidity contract in contracts/src/ and write artifacts to contracts/out/.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,14 +10,25 @@ const solc = require('solc');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const srcPath = path.join(root, 'contracts', 'src', 'FeeRouter.sol');
+const srcDir = path.join(root, 'contracts', 'src');
 const outDir = path.join(root, 'contracts', 'out');
 
-const source = fs.readFileSync(srcPath, 'utf8');
+const sourceFiles = fs
+  .readdirSync(srcDir)
+  .filter((file) => file.endsWith('.sol'))
+  .sort();
+
+if (sourceFiles.length === 0) {
+  throw new Error(`No Solidity files found in ${srcDir}`);
+}
+
+const sources = Object.fromEntries(
+  sourceFiles.map((file) => [file, { content: fs.readFileSync(path.join(srcDir, file), 'utf8') }])
+);
 
 const input = {
   language: 'Solidity',
-  sources: { 'FeeRouter.sol': { content: source } },
+  sources,
   settings: {
     optimizer: { enabled: true, runs: 200 },
     evmVersion: 'paris',
@@ -38,12 +49,17 @@ if (output.errors) {
   if (fatal) process.exit(1);
 }
 
-const c = output.contracts['FeeRouter.sol']['FeeRouter'];
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(
-  path.join(outDir, 'FeeRouter.json'),
-  JSON.stringify({ abi: c.abi, bytecode: '0x' + c.evm.bytecode.object }, null, 2)
-);
-
-console.log('Compiled FeeRouter ->', path.join(outDir, 'FeeRouter.json'));
-console.log('Bytecode size:', c.evm.bytecode.object.length / 2, 'bytes');
+for (const file of sourceFiles) {
+  const fileContracts = output.contracts[file];
+  for (const [contractName, compiled] of Object.entries(fileContracts)) {
+    if (!compiled.evm?.bytecode?.object) continue;
+    const outPath = path.join(outDir, `${contractName}.json`);
+    fs.writeFileSync(
+      outPath,
+      JSON.stringify({ abi: compiled.abi, bytecode: '0x' + compiled.evm.bytecode.object }, null, 2)
+    );
+    console.log(`Compiled ${contractName} -> ${outPath}`);
+    console.log('Bytecode size:', compiled.evm.bytecode.object.length / 2, 'bytes');
+  }
+}

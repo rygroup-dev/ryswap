@@ -1,5 +1,9 @@
-import { useMemo, useState } from "react";
-import { swapConfig, swapTokens } from "../config/swap";
+import { useEffect, useMemo, useState } from "react";
+import {
+  isSwapChainLive,
+  mainnetSwap,
+  type SwapChainConfig,
+} from "../config/swap";
 import { shortAddress } from "../lib/format";
 import { useSwapExecution } from "../hooks/useSwapExecution";
 import { useQuote } from "../hooks/useQuote";
@@ -18,6 +22,7 @@ const SLIPPAGE_OPTIONS = [
 ];
 
 export function SwapPanel({
+  config = mainnetSwap,
   account,
   chainId,
   walletBalance,
@@ -27,6 +32,7 @@ export function SwapPanel({
   onConnect,
   isConnecting,
 }: {
+  config?: SwapChainConfig;
   account: string | null;
   chainId: number | null;
   walletBalance: string | null;
@@ -36,12 +42,22 @@ export function SwapPanel({
   onConnect: () => void;
   isConnecting: boolean;
 }) {
+  const tokens = config.tokens;
+  const hasTokens = tokens.length > 0;
+  const chainLive = isSwapChainLive(config);
+
   const [amount, setAmount] = useState("0.01");
-  const [tokenSymbol, setTokenSymbol] = useState(swapTokens[0].symbol);
+  const [tokenSymbol, setTokenSymbol] = useState(tokens[0]?.symbol ?? "");
   const [slippageBps, setSlippageBps] = useState(100);
+
+  // Keep the selected token valid when the active chain changes.
+  useEffect(() => {
+    setTokenSymbol(tokens[0]?.symbol ?? "");
+  }, [config]);
+
   const token = useMemo(
-    () => swapTokens.find((t) => t.symbol === tokenSymbol) ?? swapTokens[0],
-    [tokenSymbol]
+    () => tokens.find((t) => t.symbol === tokenSymbol) ?? tokens[0] ?? null,
+    [tokenSymbol, tokens]
   );
 
   // Compute fee split locally for the quote (mirror of hook math).
@@ -51,11 +67,11 @@ export function SwapPanel({
     return BigInt(Math.round(v * 1e18));
   }, [amount]);
   const forward = useMemo(
-    () => total - (total * BigInt(swapConfig.feeBps)) / 10000n,
-    [total]
+    () => total - (total * BigInt(config.feeBps)) / 10000n,
+    [total, config]
   );
 
-  const quote = useQuote(forward, token);
+  const quote = useQuote(forward, token, config);
 
   // amountOutMinimum = quote * (1 - slippage)
   const amountOutMinimum = useMemo(() => {
@@ -63,11 +79,11 @@ export function SwapPanel({
     return (quote.amountOut * BigInt(10000 - slippageBps)) / 10000n;
   }, [quote.amountOut, slippageBps]);
 
-  const swap = useSwapExecution(account, amount, token, amountOutMinimum);
-  const onMainnet = chainId === swapConfig.chainId;
+  const swap = useSwapExecution(account, amount, token, amountOutMinimum, config);
+  const onCorrectChain = chainId === config.chainId;
 
   const useMax = () => {
-    if (!walletBalance || !onMainnet) return;
+    if (!walletBalance || !onCorrectChain) return;
     const numeric = Number(walletBalance);
     if (!Number.isFinite(numeric) || numeric <= 0) return;
     const next = Math.max(numeric - 0.003, 0);
@@ -76,7 +92,9 @@ export function SwapPanel({
 
   const disabled =
     !account ||
-    !onMainnet ||
+    !onCorrectChain ||
+    !chainLive ||
+    !token ||
     swap.split.total <= 0n ||
     quote.amountOut == null ||
     swap.state.status === "pending";
@@ -85,11 +103,29 @@ export function SwapPanel({
     <div className="swap-panel">
       <div className="card-head">
         <div>
-          <p className="label">Live · Ethereum Mainnet</p>
-          <h2>Swap ETH → token (0.3% fee)</h2>
+          <p className="label">
+            {chainLive ? "Live · " : "Staged · "}
+            {config.networkLabel}
+          </p>
+          <h2>
+            Swap ETH → token ({config.feeBps / 100}% fee)
+          </h2>
         </div>
-        <span className="pill live-pill">LIVE</span>
+        <span className={`pill ${chainLive ? "live-pill" : "soon-pill"}`}>
+          {chainLive ? "LIVE" : "SOON"}
+        </span>
       </div>
+
+      {!chainLive ? (
+        <div className="health-box health-pending">
+          <strong>{config.chainName} swap is coming online</strong>
+          <p>
+            {!config.feeRouter
+              ? `FeeRouter not yet deployed on ${config.chainName}. Deploy it with scripts/deploy.mjs, then set VITE_FEE_ROUTER_4663.`
+              : `No output tokens wired yet — real v3 pools on ${config.chainName} must be discovered before swaps enable.`}
+          </p>
+        </div>
+      ) : null}
 
       <div className="wallet-strip">
         <div>
@@ -127,7 +163,7 @@ export function SwapPanel({
           <button
             className="amount-chip"
             type="button"
-            disabled={!onMainnet || !walletBalance}
+            disabled={!onCorrectChain || !walletBalance}
             onClick={useMax}
           >
             Max
@@ -137,12 +173,20 @@ export function SwapPanel({
 
       <label className="input-wrap">
         <span>Receive token</span>
-        <select value={tokenSymbol} onChange={(e) => setTokenSymbol(e.target.value)}>
-          {swapTokens.map((t) => (
-            <option key={t.symbol} value={t.symbol}>
-              {t.symbol}
-            </option>
-          ))}
+        <select
+          value={tokenSymbol}
+          disabled={!hasTokens}
+          onChange={(e) => setTokenSymbol(e.target.value)}
+        >
+          {hasTokens ? (
+            tokens.map((t) => (
+              <option key={t.symbol} value={t.symbol}>
+                {t.symbol}
+              </option>
+            ))
+          ) : (
+            <option value="">No tokens available yet</option>
+          )}
         </select>
       </label>
 
@@ -166,23 +210,25 @@ export function SwapPanel({
           <strong>{fmtEth(swap.split.total)} ETH</strong>
         </div>
         <div>
-          <span>Platform fee ({swapConfig.feeBps / 100}%)</span>
+          <span>Platform fee ({config.feeBps / 100}%)</span>
           <strong>{fmtEth(swap.split.fee)} ETH</strong>
         </div>
         <div>
           <span>Estimated output</span>
           <strong>
-            {quote.loading
-              ? "quoting..."
-              : quote.amountOut != null
-                ? `${fmtToken(quote.amountOut, token.decimals)} ${token.symbol}`
-                : "—"}
+            {!token
+              ? "—"
+              : quote.loading
+                ? "quoting..."
+                : quote.amountOut != null
+                  ? `${fmtToken(quote.amountOut, token.decimals)} ${token.symbol}`
+                  : "—"}
           </strong>
         </div>
         <div>
           <span>Minimum received ({slippageBps / 100}% slip)</span>
           <strong>
-            {amountOutMinimum > 0n
+            {token && amountOutMinimum > 0n
               ? `${fmtToken(amountOutMinimum, token.decimals)} ${token.symbol}`
               : "—"}
           </strong>
@@ -192,15 +238,15 @@ export function SwapPanel({
       <div className="mini-grid">
         <div className="mini-stat">
           <span>Route</span>
-          <strong>ETH to {token.symbol}</strong>
+          <strong>ETH to {token?.symbol ?? "—"}</strong>
         </div>
         <div className="mini-stat">
           <span>Wallet status</span>
-          <strong>{onMainnet ? "Mainnet ready" : "Switch required"}</strong>
+          <strong>{onCorrectChain ? "Chain ready" : "Switch required"}</strong>
         </div>
         <div className="mini-stat">
           <span>Output token</span>
-          <strong>{token.symbol}</strong>
+          <strong>{token?.symbol ?? "—"}</strong>
         </div>
       </div>
 
@@ -215,10 +261,14 @@ export function SwapPanel({
         >
           {isConnecting ? "Connecting..." : "Connect wallet"}
         </button>
-      ) : !onMainnet ? (
+      ) : !onCorrectChain ? (
         <p className="error-text">
-          Switch wallet to Ethereum Mainnet (chainId 1) to swap.
+          Switch wallet to {config.networkLabel} (chainId {config.chainId}) to swap.
         </p>
+      ) : !chainLive ? (
+        <button className="primary-button" type="button" disabled>
+          Swap not live on {config.chainName} yet
+        </button>
       ) : (
         <button
           className="primary-button"
@@ -230,7 +280,7 @@ export function SwapPanel({
             ? "Swapping..."
             : quote.amountOut == null
               ? "Waiting for quote..."
-              : `Swap to ${token.symbol}`}
+              : `Swap to ${token?.symbol ?? "token"}`}
         </button>
       )}
 
@@ -238,7 +288,7 @@ export function SwapPanel({
         <div className="health-box health-healthy">
           <strong>Swap confirmed ✅</strong>
           <a href={swap.explorerUrl(swap.state.hash)} target="_blank" rel="noreferrer">
-            View on Etherscan
+            View on {config.explorerName}
           </a>
         </div>
       ) : null}
@@ -255,9 +305,12 @@ export function SwapPanel({
       ) : null}
 
       <ul className="facts compact">
-        <li>FeeRouter: {shortAddress(swapConfig.feeRouter)}</li>
-        <li>Fee recipient: {shortAddress(swapConfig.feeRecipient)}</li>
-        <li>Router: Uniswap SwapRouter02 · Quoter: QuoterV2</li>
+        <li>
+          FeeRouter:{" "}
+          {config.feeRouter ? shortAddress(config.feeRouter) : "not deployed yet"}
+        </li>
+        <li>Fee recipient: {shortAddress(config.feeRecipient)}</li>
+        <li>Router: SwapRouter02 · Quoter: QuoterV2</li>
       </ul>
     </div>
   );

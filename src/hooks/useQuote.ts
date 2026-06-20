@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { SwapToken } from "../config/swap";
-
-const QUOTER = "0x61fFE014bA17989E743c5F6cB21bF9697530B21e"; // Uniswap QuoterV2 mainnet
-const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+import type { SwapChainConfig, SwapToken } from "../config/swap";
 
 function pad(hex: string): string {
   return hex.replace(/^0x/, "").padStart(64, "0");
@@ -15,10 +12,10 @@ function uint(n: bigint): string {
 }
 
 // quoteExactInputSingle((tokenIn,tokenOut,amountIn,fee,sqrtPriceLimitX96))
-function encodeQuote(amountIn: bigint, token: SwapToken): string {
+function encodeQuote(amountIn: bigint, weth: string, token: SwapToken): string {
   return (
     "0xc6a5026a" +
-    addr(WETH) +
+    addr(weth) +
     addr(token.address) +
     uint(amountIn) +
     pad(token.poolFee.toString(16)) +
@@ -32,8 +29,14 @@ export type QuoteState = {
   error: string | null;
 };
 
-// Reads a live quote via eth_call against QuoterV2 using the user's injected RPC.
-export function useQuote(forwardWei: bigint, token: SwapToken): QuoteState {
+// Reads a live quote via eth_call against the chain's QuoterV2 using the user's
+// injected RPC. Quoter + WETH come from the active SwapChainConfig, so the same
+// hook serves both mainnet and Robinhood Chain (4663).
+export function useQuote(
+  forwardWei: bigint,
+  token: SwapToken | null,
+  config: SwapChainConfig
+): QuoteState {
   const [state, setState] = useState<QuoteState>({
     loading: false,
     amountOut: null,
@@ -43,18 +46,19 @@ export function useQuote(forwardWei: bigint, token: SwapToken): QuoteState {
 
   useEffect(() => {
     const eth = (window as unknown as { ethereum?: any }).ethereum;
-    if (!eth || forwardWei <= 0n) {
+    // No wallet, no quoter on this chain, no token, or no input -> no quote.
+    if (!eth || !config.quoter || !token || forwardWei <= 0n) {
       setState({ loading: false, amountOut: null, error: null });
       return;
     }
     const id = ++reqId.current;
     setState((s) => ({ ...s, loading: true, error: null }));
 
-    const data = encodeQuote(forwardWei, token);
+    const data = encodeQuote(forwardWei, config.weth, token);
     eth
       .request({
         method: "eth_call",
-        params: [{ to: QUOTER, data }, "latest"],
+        params: [{ to: config.quoter, data }, "latest"],
       })
       .then((ret: string) => {
         if (id !== reqId.current) return; // stale
@@ -75,7 +79,7 @@ export function useQuote(forwardWei: bigint, token: SwapToken): QuoteState {
           error: e?.message || "Quote failed",
         });
       });
-  }, [forwardWei, token]);
+  }, [forwardWei, token, config]);
 
   return state;
 }

@@ -27,6 +27,18 @@ export const routeCandidates: RouteCandidate[] = [
     ],
   },
   {
+    id: "direct-single-tx-wrapper",
+    label: "Direct single-tx wrapper scaffold",
+    status: "observed",
+    summary:
+      "A source-chain wrapper can combine fee-split + Inbox deposit into one transaction, but it must be allowlisted by Robinhood before activation.",
+    evidence: [
+      "DirectBridgeFeeRouter.sol added for atomic fee split + Inbox depositEth flow",
+      "Wrapper still depends on Robinhood Inbox allowlist accepting the contract caller",
+      "Activation should wait until public route / whitelist is confirmed",
+    ],
+  },
+  {
     id: "relay-multichain",
     label: "Relay multichain bridge",
     status: "disabled",

@@ -295,6 +295,11 @@ body::before {
   color: #04110b !important;
   box-shadow: 0 4px 14px rgba(16,185,129,0.35);
 }
+.soon-pill {
+  background: rgba(245, 185, 66, 0.12) !important;
+  border-color: rgba(245, 185, 66, 0.4) !important;
+  color: #f5b942 !important;
+}
 
 .wallet-strip {
   display: grid;
@@ -458,6 +463,7 @@ body::before {
 .health-box a { color: var(--brand-3); text-decoration: none; font-weight: 600; }
 .health-box a:hover { text-decoration: underline; }
 .health-healthy { border-color: rgba(52, 211, 153, 0.32); background: rgba(16, 185, 129, 0.1); }
+.health-pending { border-color: rgba(245, 185, 66, 0.32); background: rgba(245, 185, 66, 0.08); }
 .health-degraded { border-color: rgba(255, 107, 107, 0.3); background: rgba(255, 107, 107, 0.08); }
 .health-checking { border-color: rgba(245, 185, 66, 0.3); background: rgba(245, 185, 66, 0.07); }
 
@@ -507,6 +513,16 @@ body::before {
 .facts li, .steps li { margin-bottom: 7px; }
 .facts.compact { font-size: 11.5px; opacity: 0.7; margin-top: 14px; list-style: none; padding-left: 0; }
 .facts.compact li { margin-bottom: 4px; }
+.route-note {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(240, 180, 41, 0.28);
+  border-radius: 14px;
+  background: rgba(240, 180, 41, 0.08);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+}
 .muted p { margin: 0 0 12px; color: var(--sub); line-height: 1.7; }
 .route-blocker { margin: 0 0 14px; color: var(--sub); line-height: 1.6; }
 

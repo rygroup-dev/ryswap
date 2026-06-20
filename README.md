@@ -9,6 +9,7 @@
 **ryswap** is a non-custodial, fee-first swap dApp. Users swap **ETH → tokens** directly on-chain through a transparent fee router. No operator float, no custody — you keep your funds until you sign, and the output lands straight in your wallet.
 
 A staged **bridge** surface (ETH → rbETH on Robinhood Chain `4663`) ships as a preview tab.
+A **single-tx direct bridge wrapper** is now scaffolded for Ethereum source-chain deployment, but must remain disabled until Robinhood opens the relevant Inbox / allowlist path.
 
 ---
 
@@ -76,6 +77,26 @@ Copy `.env.example` to `.env`. All values have safe defaults baked in, so the ap
 | `VITE_FEE_BPS` | Platform fee in basis points (default `30` = 0.3%) |
 | `VITE_FEE_RECIPIENT` | Address that receives the fee |
 | `VITE_FEE_ROUTER` | Deployed FeeRouter address |
+| `VITE_DIRECT_BRIDGE_FEE_BPS` | Planned direct-bridge fee in basis points (default `150` = 1.5%) |
+| `VITE_DIRECT_BRIDGE_FEE_RECIPIENT` | Fee recipient for the single-tx direct bridge wrapper |
+| `VITE_DIRECT_BRIDGE_INBOX` | Robinhood / Orbit Inbox address used by the wrapper |
+| `VITE_DIRECT_BRIDGE_FEE_ROUTER` | Deployed DirectBridgeFeeRouter address once allowlisted |
+
+## Direct bridge scaffold
+
+The repository now includes a `DirectBridgeFeeRouter` contract for the future
+ETH mainnet -> Robinhood direct flow:
+
+1. User sends ETH once to the wrapper.
+2. Wrapper skims the platform fee on the source chain.
+3. Wrapper forwards the remaining ETH to the configured Inbox via `depositEth`.
+4. Destination funds are credited to the user's Robinhood address if the Inbox accepts the caller.
+
+Important:
+
+- This wrapper **does not** bypass Robinhood allowlists.
+- Keep the frontend route disabled until the wrapper address is explicitly allowed.
+- Deploy helper: `node scripts/deploy-direct-bridge-router.mjs`
 
 ---
 
